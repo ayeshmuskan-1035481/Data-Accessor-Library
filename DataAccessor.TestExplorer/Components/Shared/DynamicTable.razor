@@ -1,0 +1,35 @@
+@if (Rows.Count == 0)
+{
+    <div class="empty-state">No records to display.</div>
+}
+else
+{
+    var columns = Rows[0].EnumerateObject().ToArray();
+    <div class="table-scroll"><table>
+        <thead><tr>@foreach (var column in columns) { <th>@Humanize(column.Name)</th> }</tr></thead>
+        <tbody>
+            @foreach (var row in Rows)
+            {
+                <tr>@foreach (var column in columns)
+                {
+                    var value = row.TryGetProperty(column.Name, out var cell) ? cell : default;
+                    <td>@Format(value)</td>
+                }</tr>
+            }
+        </tbody>
+    </table></div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<JsonElement> Rows { get; set; } = [];
+    private static string Humanize(string name) => string.Concat(name.Select((character, index) => index > 0 && char.IsUpper(character) ? " " + character : character.ToString()));
+    private static string Format(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString() ?? "",
+        JsonValueKind.Number when value.TryGetDecimal(out var number) => number.ToString("0.##", CultureInfo.InvariantCulture),
+        JsonValueKind.True => "Yes",
+        JsonValueKind.False => "No",
+        JsonValueKind.Null or JsonValueKind.Undefined => "—",
+        _ => value.ToString()
+    };
+}

@@ -1,0 +1,938 @@
+@page "/"
+@page "/database-viewer"
+@page "/database-viewer/{TableName}"
+@page "/connection-test"
+@page "/generic/query-multiple"
+@page "/generic/query-single"
+@page "/generic/query-json"
+@page "/execute-non-query"
+@page "/execute-non-query/{Operation}"
+@page "/stored-procedures"
+@page "/unit-of-work"
+@page "/distributed-transaction"
+@page "/multi-server"
+@page "/cross-server"
+@page "/http-data-access"
+@page "/composite"
+@page "/database-providers"
+@page "/configuration"
+@page "/documentation"
+@page "/sql-queries"
+@page "/json-queries"
+@page "/advanced-features"
+@page "/data-sources"
+@page "/Error"
+@page "/not-found"
+@implements IDisposable
+@inject MockDataService Data
+@inject DirectLibraryTestService LibraryTests
+@inject DatabaseConnectionTestService ConnectionTests
+@inject NavigationManager Navigation
+
+<PageTitle>@BrowserTitle</PageTitle>
+<main class="content">
+    @if (IsDashboard)
+    {
+        <div class="breadcrumb">Home <span>/</span> Dashboard</div>
+        <section class="hero">
+            <div class="hero-orb orb-one"></div><div class="hero-orb orb-two"></div>
+            <div class="eyebrow">DATAACCESSOR LIBRARY V1.0</div>
+            <h1>DataAccessor Library Explorer</h1>
+            <p>Explore and test data access patterns from simple SQL queries to distributed transactions and HTTP integrations.</p>
+            <div class="hero-pills">
+                @foreach (var feature in HeroFeatures) { <span>@feature</span> }
+            </div>
+            <div class="hero-actions">
+                <a class="button light" href="/database-viewer">View Mock Database</a>
+                <a class="button outline-light" href="/generic/query-multiple">Run First Query</a>
+            </div>
+        </section>
+
+        <div class="stats-grid">
+            <StatCard Label="Employees" Count="@Data.Employees.Count" Accent="blue" Icon="♙" />
+            <StatCard Label="Customers" Count="@Data.Customers.Count" Accent="violet" Icon="♧" />
+            <StatCard Label="Products" Count="@Data.Products.Count" Accent="green" Icon="▣" />
+            <StatCard Label="Orders" Count="@Data.Orders.Count" Accent="orange" Icon="▤" />
+        </div>
+
+        <section class="section">
+            <div class="section-title-row"><div><h2>Live Database Previews</h2><p>Sample records from the current in-memory demonstration dataset.</p></div><span class="mock-tag">MOCK DATA</span></div>
+            <div class="preview-grid">
+                <PreviewCard Title="Employees" Route="/database-viewer/employees" Headers="Name,Department,Salary" Rows="@Data.Employees.Take(3).Select(x => new[] { x.FullName, x.Department, Money(x.Salary) })" />
+                <PreviewCard Title="Customers" Route="/database-viewer/customers" Headers="Company,Email,Country" Rows="@Data.Customers.Take(3).Select(x => new[] { x.CustomerName, x.Email, x.Country })" />
+                <PreviewCard Title="Products" Route="/database-viewer/products" Headers="Product,Category,Price" Rows="@Data.Products.Take(3).Select(x => new[] { x.ProductName, x.Category, Money(x.Price) })" />
+                <PreviewCard Title="Orders" Route="/database-viewer/orders" Headers="Order #,Customer,Status,Total" Rows="@Data.Orders.Take(3).Select(x => new[] { $"#{x.OrderId}", Data.Customers.FirstOrDefault(c => c.CustomerId == x.CustomerId)?.CustomerName ?? "Unknown", x.Status, Money(x.TotalAmount) })" />
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-title-row"><div><h2>Feature Pages</h2><p>Focused mock scenarios for the library's data access patterns.</p></div></div>
+            <div class="feature-grid">
+                @foreach (var item in FeatureLinks)
+                {
+                    <a class="feature-card @item.Color" href="@item.Route"><span class="feature-icon">@item.Icon</span><h3>@item.Title</h3><code>@item.Contract</code><p>@item.Description</p><span class="card-arrow">Explore →</span></a>
+                }
+
+            </div>
+        </section>
+
+        <section class="section health-panel">
+            <div class="section-title-row"><div><h2>Feature Health Check</h2><p>These checks verify the mock demonstration fixtures only; they do not contact the API or database.</p></div><button class="button primary" @onclick="RunHealthChecks" disabled="@IsBusy">@(IsBusy ? "Running checks..." : "Run All Feature Tests")</button></div>
+            @if (HealthResults.Count > 0)
+            {
+                <div class="health-grid">
+                    @foreach (var check in HealthResults)
+                    {
+                        <div class="health-item"><span class="status-dot @(check.Passed ? "good" : "bad")"></span><div><strong>@check.Name</strong><small>@(check.Passed ? "OK · mock demo" : "FAIL · mock demo") · @check.ElapsedMilliseconds.ToString("F1") ms</small></div></div>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="section health-panel library-test-panel">
+            <div class="section-title-row">
+                <div><h2>Direct Library Test Suite</h2><p>Invokes the existing DataAccessor.Library methods against temporary in-memory SQLite databases and a local HTTP stub. It does not use the API, configured connection strings, or external services.</p></div>
+                <button class="button primary" @onclick="RunLibrarySuite" disabled="@LibraryBusy">@(LibraryBusy ? "Testing Library..." : "Run Direct Library Tests")</button>
+            </div>
+            <div class="library-safety-note"><strong>Isolated and disposable:</strong> fixture connections are created for this run and released afterwards. Stored procedures are marked unsupported on SQLite; that is not a pass.</div>
+            @if (LibraryResults.Count > 0)
+            {
+                <div class="library-results">
+                    @foreach (var result in LibraryResults)
+                    {
+                        <article class="library-result">
+                            <div class="library-result-status @result.Status.ToLowerInvariant()">@result.Status</div>
+                            <div class="library-result-body">
+                                <div class="section-title-row"><strong>@result.Test</strong><span class="muted">@result.LibraryArea · @result.ElapsedMilliseconds.ToString("F1") ms</span></div>
+                                <code>@result.Method</code>
+                                <p>@result.Detail</p>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    }
+    else if (IsViewer)
+    {
+        <div class="breadcrumb"><a href="/">Dashboard</a> <span>/</span> Database Viewer</div>
+        <div class="page-heading-row"><div><h1>Database Viewer</h1><p>Browse deterministic in-memory sample data. Nothing here is introspected from a live database.</p></div><a class="button primary" href="/generic/query-multiple">Query This Data</a></div>
+        <div class="notice"><strong>Mock dataset</strong><span>These records reset when the Explorer restarts. They are separate from the CRUD demonstration data.</span></div>
+        @if (string.IsNullOrWhiteSpace(TableName))
+        {
+            <div class="table-card-grid">
+                @foreach (var table in Tables)
+                {
+                    <a class="table-card" href="@($"/database-viewer/{table.Key}")"><span class="table-card-icon">@table.Icon</span><h3>@table.Title</h3><p>@table.Description</p><strong>@table.Count rows</strong><span>View table →</span></a>
+                }
+                <a class="table-card schema-card" href="/database-viewer/schema"><span class="table-card-icon">⌘</span><h3>Schema</h3><p>Reference DDL-style fields and relationships.</p><strong>23 fields</strong><span>View schema →</span></a>
+            </div>
+            <section class="panel section"><h2>Relationships</h2><p><code>Orders.CustomerId</code> references <code>Customers.CustomerId</code>. All four mock tables use integer primary keys.</p></section>
+        }
+        else if (TableName.Equals("schema", StringComparison.OrdinalIgnoreCase))
+        {
+            <section class="panel">
+                <h2>Reference Schema</h2><p class="muted">SQL Server-style reference types; this is not live schema introspection.</p>
+                <div class="table-scroll"><table><thead><tr><th>Table</th><th>Column</th><th>Data Type</th><th>Key</th><th>Notes</th></tr></thead><tbody>
+                    @foreach (var row in SchemaRows) { <tr><td>@row.Table</td><td><code>@row.Column</code></td><td>@row.Type</td><td>@row.Key</td><td>@row.Notes</td></tr> }
+                </tbody></table></div>
+            </section>
+        }
+        else if (TryGetTable(TableName, out var selectedTable, out var selectedRows))
+        {
+            <div class="page-heading-row table-detail-heading"><div><span class="eyebrow dark">@selectedTable.Icon @selectedTable.Title</span><h2>@selectedTable.Description</h2><p>@selectedTable.Count records · current mock fixture</p></div><a class="button secondary" href="/database-viewer">← All Tables</a></div>
+            <section class="panel">
+                <div class="toolbar"><label class="search-box">⌕ <input aria-label="Search table records" placeholder="Search records..." @bind="SearchText" @bind:event="oninput" /></label>@if (!string.IsNullOrEmpty(SearchText)) { <button class="button secondary small" @onclick="() => SearchText = string.Empty">Clear</button> }<span class="toolbar-count">@FilteredRows(selectedRows).Count() records</span></div>
+                @if (!FilteredRows(selectedRows).Any()) { <div class="empty-state">No records match your search.</div> }
+                else { <DynamicTable Rows="FilteredRows(selectedRows).ToList()" /> }
+                <div class="panel-foot">Mock records are in memory and reset when the Explorer restarts.</div>
+            </section>
+        }
+        else
+        {
+            <div class="empty-state error-state"><h2>Table not found</h2><p>The table '@TableName' is not part of this mock dataset.</p><a href="/database-viewer">Return to all tables</a></div>
+        }
+    }
+    else if (CurrentPath == "/generic/query-multiple")
+    {
+        <PageIntro Breadcrumb="SQL Operations / Query Multiple" Title="Query Multiple Records" Description="Demonstrate QueryAsync<T>() with parameterized filters against the read-only employee fixture." />
+        <div class="two-column">
+            <section class="panel"><h2>Query Parameters</h2>
+                <label>Department<select @bind="Department" @bind:after="ClearQueryResult"><option>All Departments</option>@foreach (var department in Departments) { <option>@department</option> }</select></label>
+                <div class="form-row"><label>Minimum salary<input type="number" min="0" step="1000" @bind="MinSalary" @bind:after="ClearQueryResult" /></label><label>Maximum salary<input type="number" min="0" step="1000" @bind="MaxSalary" @bind:after="ClearQueryResult" /></label></div>
+                <div class="button-row"><button class="button primary" @onclick="RunMultipleQuery" disabled="@IsBusy">@(IsBusy ? "Querying..." : "Run Query")</button><button class="button secondary" @onclick="ResetQuery">Reset Filters</button></div>
+            </section>
+            <section class="panel"><h2>Parameterized SQL</h2><pre><code>@MultipleSql</code></pre><h3>Parameters</h3><pre><code>@MultipleParameters</code></pre><span class="mock-tag">MOCK EXECUTION · NO SQL SENT</span></section>
+        </div>
+        @if (QueryHasRun)
+        {
+            <section class="panel result-panel"><div class="section-title-row"><h2>Results <span class="count-badge">@QueryEmployees.Count records</span></h2><span class="muted">Completed in @QueryElapsed.ToString("F2") ms · mock</span></div>
+                @if (!string.IsNullOrWhiteSpace(QueryError)) { <div class="result-message failure">@QueryError</div> }
+                @if (QueryEmployees.Count == 0) { <div class="empty-state">No employees match these filters.</div> }
+                else { <EmployeeTable Rows="QueryEmployees" /> }
+            </section>
+        }
+    }
+    else if (CurrentPath == "/generic/query-single")
+    {
+        <PageIntro Breadcrumb="SQL Operations / Query Single" Title="Query Single Record" Description="Look up a single employee. A missing ID returns a genuine not-found result, not a fabricated record." />
+        <section class="panel narrow-panel"><h2>Lookup Employee</h2><label>Employee ID<input type="number" min="1" @bind="LookupId" @bind:after="() => SingleHasRun = false" /></label>
+            <div class="quick-ids">@foreach (var id in Data.Employees.Select(e => e.EmployeeId).Append(99)) { <button class="chip" @onclick="() => LookupId = id">ID @id@(id == 99 ? " (not found)" : "")</button> }</div>
+            <button class="button primary" @onclick="RunSingleQuery" disabled="@IsBusy">@(IsBusy ? "Looking up..." : "Find Employee")</button>
+        </section>
+        @if (SingleHasRun)
+        {
+            @if (SingleEmployee is null) { <section class="panel empty-state"><h2>No Record Found</h2><p>No employee exists with ID @LookupId.</p></section> }
+            else { <section class="panel profile-card"><div class="avatar">@SingleEmployee.FirstName[..1]@SingleEmployee.LastName[..1]</div><div><span class="mock-tag">MOCK RECORD</span><h2>@SingleEmployee.FullName</h2><p>@SingleEmployee.Email</p><div class="profile-facts"><span>ID <b>@SingleEmployee.EmployeeId</b></span><span>Department <b>@SingleEmployee.Department</b></span><span>Salary <b>@SingleEmployee.Salary.ToString("C0")</b></span><span>Hire date <b>@SingleEmployee.HireDate.ToString("yyyy-MM-dd")</b></span></div></div></section> }
+            <p class="query-meta">Query: <code>WHERE EmployeeId = @@EmployeeId</code> · @QueryElapsed.ToString("F2") ms · mock</p>
+        }
+    }
+    else if (CurrentPath == "/generic/query-json" || CurrentPath == "/json-queries")
+    {
+        <PageIntro Breadcrumb="SQL Operations / Query JSON" Title="Query JSON Results" Description="Run a mock dataset through JSON serialization and inspect the same records as a table or formatted document." />
+        <section class="panel"><div class="form-row align-end"><label>Dataset<select @bind="DatasetName" @bind:after="() => JsonHasRun = false">@foreach (var name in DatasetNames) { <option>@name</option> }</select></label><label>Display<select @bind="JsonView">@foreach (var view in new[] { "JSON", "Table" }) { <option>@view</option> }</select></label><button class="button primary" @onclick="RunJsonQuery" disabled="@IsBusy">@(IsBusy ? "Serializing..." : "Run Query")</button></div><p class="muted">@DatasetCount(DatasetName) rows · mock · JsonDocument/JsonElement demonstration</p></section>
+        @if (JsonHasRun)
+        {
+            <section class="panel"><div class="section-title-row"><h2>@DatasetName results</h2><span class="mock-tag">MOCK JSON</span></div>
+                @if (JsonView == "JSON") { <pre class="json-output"><code>@JsonResult</code></pre> }
+                else { <DynamicTable Rows="DatasetRows(DatasetName)" /> }
+            </section>
+        }
+    }
+    else if (CurrentPath.StartsWith("/execute-non-query"))
+    {
+        @RenderCrud()
+    }
+    else if (CurrentPath == "/not-found" || CurrentPath == "/Error")
+    {
+        <div class="breadcrumb"><a href="/">Dashboard</a> <span>/</span> Error</div><section class="panel empty-state"><h1>@(CurrentPath == "/Error" ? "Something went wrong" : "Not Found")</h1><p>@(CurrentPath == "/Error" ? "The Explorer encountered an unexpected error. No sensitive details are displayed." : "Sorry, the content you are looking for does not exist.")</p><a class="button primary" href="/">Return to dashboard</a></section>
+    }
+    else
+    {
+        @RenderScenarioPage()
+    }
+</main>
+
+@code {
+    [Parameter] public string? TableName { get; set; }
+    [Parameter] public string? Operation { get; set; }
+
+    private string CurrentPath { get; set; } = "/";
+    private string BrowserTitle => CurrentPath switch
+    {
+        "/" => "Dashboard - DataAccessor Explorer",
+        "/database-viewer" => "Database Viewer - DataAccessor Explorer",
+        "/connection-test" => "Test Connections - DataAccessor Explorer",
+        "/generic/query-multiple" => "Query Multiple - DataAccessor Explorer",
+        "/generic/query-single" => "Query Single - DataAccessor Explorer",
+        "/generic/query-json" or "/json-queries" => "Query JSON - DataAccessor Explorer",
+        _ when CurrentPath.StartsWith("/execute-non-query", StringComparison.OrdinalIgnoreCase) => "Execute Non-Query - DataAccessor Explorer",
+        "/not-found" => "Not Found - DataAccessor Explorer",
+        _ => $"{ScenarioTitle} - DataAccessor Explorer"
+    };
+    private bool IsDashboard => CurrentPath == "/";
+    private bool IsViewer => CurrentPath == "/database-viewer" || CurrentPath.StartsWith("/database-viewer/", StringComparison.OrdinalIgnoreCase);
+    private bool IsBusy { get; set; }
+    private bool LibraryBusy { get; set; }
+    private bool ConnectionBusy { get; set; }
+    private List<DatabaseConnectionTestResult> ConnectionResults { get; set; } = [];
+    private List<FeatureCheck> HealthResults { get; set; } = [];
+    private List<LibraryTestResult> LibraryResults { get; set; } = [];
+    private string Department { get; set; } = "All Departments";
+    private decimal? MinSalary { get; set; }
+    private decimal? MaxSalary { get; set; }
+    private bool QueryHasRun { get; set; }
+    private List<Employee> QueryEmployees { get; set; } = [];
+    private double QueryElapsed { get; set; }
+    private string QueryError { get; set; } = "";
+    private int LookupId { get; set; } = 1;
+    private bool SingleHasRun { get; set; }
+    private Employee? SingleEmployee { get; set; }
+    private string DatasetName { get; set; } = "Employees";
+    private string JsonView { get; set; } = "JSON";
+    private bool JsonHasRun { get; set; }
+    private string JsonResult { get; set; } = "";
+    private string SearchText { get; set; } = "";
+    private string FirstName { get; set; } = "";
+    private string LastName { get; set; } = "";
+    private string Email { get; set; } = "";
+    private string CrudDepartment { get; set; } = "Engineering";
+    private decimal CrudSalary { get; set; }
+    private string UpdateDepartment { get; set; } = "";
+    private decimal? UpdateSalary { get; set; }
+    private int CrudId { get; set; } = 1;
+    private decimal BulkIncreaseAmount { get; set; } = 1000;
+    private MutationResult? Mutation { get; set; }
+    private string ScenarioOutput { get; set; } = "";
+    private string ScenarioInput { get; set; } = "";
+    private string ScenarioSelection { get; set; } = "";
+
+    private static readonly string[] HeroFeatures = ["IGenericDataAccess", "IUnitOfWork", "IMultiServerDataAccess", "HttpDataAccess", "CompositeDataAccess", ".NET 8"];
+    private static readonly string[] Departments = ["Engineering", "Marketing", "Sales", "Finance", "HR"];
+    private static readonly string[] DatasetNames = ["Employees", "Customers", "Products", "Orders"];
+    private static readonly (string Name, string Icon, string Package, string Description)[] ProviderDetails =
+    [
+        ("SQL Server", "▦", "Microsoft.Data.SqlClient", "Microsoft SQL Server relational database."),
+        ("PostgreSQL", "🐘", "Npgsql", "Open-source relational database with rich data types."),
+        ("MySQL", "◉", "MySqlConnector", "Popular open-source relational database."),
+        ("SQLite", "▣", "Microsoft.Data.Sqlite", "Embedded file-based database; stored procedures are not supported.")
+    ];
+    private static readonly FeatureLink[] FeatureLinks =
+    [
+        new("Query Multiple", "QueryAsync<T>()", "Parameterized queries with optional filters.", "/generic/query-multiple", "⌕", "blue"),
+        new("Query Single", "QuerySingleAsync<T>()", "Find one record or handle a genuine null result.", "/generic/query-single", "◉", "violet"),
+        new("Execute Non-Query", "ExecuteAsync()", "Demonstrate isolated in-memory CRUD operations.", "/execute-non-query", "✎", "green"),
+        new("Unit of Work", "IUnitOfWork", "Explore transaction scenarios and event logs.", "/unit-of-work", "⇄", "orange"),
+        new("Distributed Transaction", "DistributedTransactionManager", "Model coordinated operations across servers.", "/distributed-transaction", "⤳", "rose"),
+        new("Multi-Server", "IMultiServerDataAccess", "Compare named-server query patterns.", "/multi-server", "▥", "teal"),
+        new("Test Connections", "DatabaseConnectionFactory", "Open two isolated databases and verify seeded data.", "/connection-test", "⇄", "teal")
+    ];
+    private sealed record FeatureLink(string Title, string Contract, string Description, string Route, string Icon, string Color);
+    private sealed record TableInfo(string Key, string Title, string Description, string Icon, int Count);
+
+    private IEnumerable<TableInfo> Tables =>
+    [
+        new("employees", "Employees", "Employee directory and salary information.", "♙", Data.Employees.Count),
+        new("customers", "Customers", "Customer contact and location records.", "♧", Data.Customers.Count),
+        new("products", "Products", "Product catalog, pricing and stock.", "▣", Data.Products.Count),
+        new("orders", "Orders", "Orders linked to customer records.", "▤", Data.Orders.Count)
+    ];
+
+    private static readonly (string Table, string Column, string Type, string Key, string Notes)[] SchemaRows =
+    [
+        ("Employees","EmployeeId","int","PK","Identity"),("Employees","FirstName","nvarchar(50)","","Required"),("Employees","LastName","nvarchar(50)","","Required"),("Employees","Email","nvarchar(120)","","Unique"),("Employees","Department","nvarchar(50)","",""),("Employees","Salary","decimal(10,2)","",""),("Employees","HireDate","datetime","",""),
+        ("Customers","CustomerId","int","PK","Identity"),("Customers","CustomerName","nvarchar(100)","","Required"),("Customers","Email","nvarchar(120)","",""),("Customers","Phone","nvarchar(30)","",""),("Customers","City","nvarchar(80)","",""),("Customers","Country","nvarchar(80)","",""),
+        ("Products","ProductId","int","PK","Identity"),("Products","ProductName","nvarchar(120)","","Required"),("Products","Category","nvarchar(50)","",""),("Products","Price","decimal(10,2)","",""),("Products","StockQuantity","int","",""),
+        ("Orders","OrderId","int","PK","Identity"),("Orders","CustomerId","int","FK","References Customers.CustomerId"),("Orders","OrderDate","datetime","",""),("Orders","TotalAmount","decimal(10,2)","",""),("Orders","Status","nvarchar(30)","","")
+    ];
+
+    private string MultipleSql
+    {
+        get
+        {
+            var clauses = new List<string>();
+            if (Department != "All Departments") clauses.Add("Department = @Department");
+            if (MinSalary.HasValue) clauses.Add("Salary >= @MinSalary");
+            if (MaxSalary.HasValue) clauses.Add("Salary <= @MaxSalary");
+            return "SELECT EmployeeId, FirstName, LastName, Email, Department, Salary, HireDate\nFROM Employees" +
+                (clauses.Count > 0 ? "\nWHERE " + string.Join("\n  AND ", clauses) : "") + "\nORDER BY EmployeeId;";
+        }
+    }
+    private string MultipleParameters => string.Join(", ", new[]
+    {
+        Department != "All Departments" ? $"Department = \"{Department}\"" : null,
+        MinSalary.HasValue ? $"MinSalary = {Money(MinSalary.Value)}" : null,
+        MaxSalary.HasValue ? $"MaxSalary = {Money(MaxSalary.Value)}" : null
+    }.Where(value => value is not null));
+
+    private string ProviderConnectionString
+    {
+        get
+        {
+            var builder = new System.Data.Common.DbConnectionStringBuilder();
+            if (ScenarioSelection == "SQLite")
+            {
+                builder["Data Source"] = string.IsNullOrWhiteSpace(ProviderDatabase) ? "app.db" : ProviderDatabase;
+            }
+            else
+            {
+                builder["Server"] = string.IsNullOrWhiteSpace(ProviderHost) ? "localhost" : ProviderHost;
+                builder["Database"] = string.IsNullOrWhiteSpace(ProviderDatabase) ? "MyDatabase" : ProviderDatabase;
+                if (!string.IsNullOrWhiteSpace(ProviderUser))
+                {
+                    builder["User ID"] = ProviderUser;
+                }
+                else if (ScenarioSelection == "SQL Server") builder["Trusted_Connection"] = "True";
+            }
+            return builder.ConnectionString;
+        }
+    }
+
+    private string ConfigurationJson => JsonSerializer.Serialize(new
+    {
+        DataAccess = new
+        {
+            DefaultSource = ScenarioSelection,
+            Http = new { BaseUrl = ScenarioInput },
+            Databases = new[]
+            {
+                new { Name = ConfigConnectionName, Provider = ConfigProvider, ConnectionString = RedactedConfigConnectionString, CommandTimeout = ConfigTimeout }
+            }
+        }
+    }, new JsonSerializerOptions { WriteIndented = true });
+
+    private string RedactedConfigConnectionString
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(ConfigConnectionString))
+                return "";
+            try
+            {
+                var builder = new System.Data.Common.DbConnectionStringBuilder
+                {
+                    ConnectionString = ConfigConnectionString
+                };
+                foreach (var key in builder.Keys.Cast<string>().Where(key =>
+                    key.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+                    key.Equals("pwd", StringComparison.OrdinalIgnoreCase)))
+                {
+                    builder[key] = "[redacted]";
+                }
+                return builder.ConnectionString;
+            }
+            catch (ArgumentException)
+            {
+                return "[invalid connection string omitted; preview only]";
+            }
+        }
+    }
+
+    protected override void OnParametersSet() => SyncRoute();
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        SyncRoute();
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        _ = InvokeAsync(() =>
+        {
+            SyncRoute();
+            StateHasChanged();
+        });
+    }
+
+    private void SyncRoute()
+    {
+        var path = new Uri(Navigation.Uri).AbsolutePath;
+        CurrentPath = path.Length > 1 ? path.TrimEnd('/') : "/";
+        SearchText = "";
+        QueryHasRun = false;
+        QueryError = "";
+        SingleHasRun = false;
+        JsonHasRun = false;
+        Mutation = null;
+        ScenarioOutput = "";
+        QueryError = "";
+        ScenarioSelection = CurrentPath switch
+        {
+            "/stored-procedures" => "sp_GetEmployeesByDepartment",
+            "/unit-of-work" => "Commit Transaction",
+            "/distributed-transaction" => "Commit All Servers",
+            "/multi-server" => "QueryJson",
+            "/cross-server" => "QueryMultipleServersAsync",
+            "/http-data-access" => "GET /mock/todos/1",
+            "/database-providers" => "SQL Server",
+            "/configuration" => "Auto",
+            _ => "Employees"
+        };
+        ScenarioInput = CurrentPath switch
+        {
+            "/stored-procedures" => "Engineering",
+            "/http-data-access" => "/mock/todos/1",
+            "/composite" => "SELECT 1 AS Id, 'Test' AS Value",
+            "/configuration" => "http://localhost:5000",
+            _ => ""
+        };
+        FirstName = LastName = Email = UpdateDepartment = "";
+        UpdateSalary = null;
+    }
+
+    private async Task RunHealthChecks()
+    {
+        IsBusy = true;
+        HealthResults.Clear();
+        await Task.Delay(150);
+        HealthResults = Data.RunHealthChecks().ToList();
+        IsBusy = false;
+    }
+
+    private async Task RunLibrarySuite()
+    {
+        LibraryBusy = true;
+        LibraryResults = [];
+        try
+        {
+            LibraryResults = (await LibraryTests.RunIsolatedSuiteAsync()).ToList();
+        }
+        finally
+        {
+            LibraryBusy = false;
+        }
+    }
+
+    private async Task RunConnectionTests()
+    {
+        ConnectionBusy = true;
+        try
+        {
+            ConnectionResults = (await ConnectionTests.TestConnectionsAsync()).ToList();
+        }
+        finally
+        {
+            ConnectionBusy = false;
+        }
+    }
+
+    private async Task RunMultipleQuery()
+    {
+        IsBusy = true;
+        QueryHasRun = false;
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        await Task.Delay(180);
+        try { QueryEmployees = Data.QueryEmployees(Department, MinSalary, MaxSalary).ToList(); QueryError = ""; }
+        catch (ArgumentException exception) { QueryError = exception.Message; QueryEmployees = []; }
+        timer.Stop();
+        QueryElapsed = timer.Elapsed.TotalMilliseconds;
+        QueryHasRun = true;
+        IsBusy = false;
+    }
+
+    private void ResetQuery()
+    {
+        Department = "All Departments";
+        MinSalary = null;
+        MaxSalary = null;
+        QueryEmployees = [];
+        QueryHasRun = false;
+        ScenarioOutput = "";
+    }
+
+    private void ClearQueryResult()
+    {
+        QueryHasRun = false;
+        QueryEmployees = [];
+        QueryError = "";
+    }
+
+    private async Task RunSingleQuery()
+    {
+        IsBusy = true;
+        SingleHasRun = false;
+        await Task.Delay(140);
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        SingleEmployee = Data.FindEmployee(LookupId);
+        timer.Stop();
+        QueryElapsed = timer.Elapsed.TotalMilliseconds;
+        SingleHasRun = true;
+        IsBusy = false;
+    }
+
+    private async Task RunJsonQuery()
+    {
+        IsBusy = true;
+        JsonHasRun = false;
+        await Task.Delay(120);
+        JsonResult = JsonSerializer.Serialize(Data.GetDataset(DatasetName), new JsonSerializerOptions { WriteIndented = true });
+        JsonHasRun = true;
+        IsBusy = false;
+    }
+
+    private int DatasetCount(string name) => DatasetRows(name).Count;
+    private List<JsonElement> DatasetRows(string name)
+    {
+        var element = JsonSerializer.SerializeToElement(Data.GetDataset(name));
+        return element.EnumerateArray().ToList();
+    }
+
+    private bool TryGetTable(string name, out TableInfo table, out List<JsonElement> rows)
+    {
+        table = Tables.FirstOrDefault(item => item.Key.Equals(name, StringComparison.OrdinalIgnoreCase))!;
+        rows = [];
+        if (table is null) return false;
+        rows = DatasetRows(table.Title);
+        return true;
+    }
+
+    private IEnumerable<JsonElement> FilteredRows(List<JsonElement> rows) =>
+        string.IsNullOrWhiteSpace(SearchText)
+            ? rows
+            : rows.Where(row => row.ToString().Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+
+    private RenderFragment RenderCrud() => @<section>
+        <div class="breadcrumb"><a href="/">Dashboard</a> <span>/</span> Execute Non-Query</div>
+        <div class="page-heading-row"><div><h1>Execute Non-Query</h1><p>Isolated mutable in-memory fixture; these changes do not affect dashboard/query data or any database.</p></div><span class="mock-tag">MOCK CRUD DATA · 8 INITIAL ROWS</span></div>
+        <div class="operation-tabs">
+            <a class="@(Operation == "insert" ? "selected" : "")" href="/execute-non-query/insert">INSERT Employee</a>
+            <a class="@(Operation == "update" ? "selected" : "")" href="/execute-non-query/update">UPDATE Employee</a>
+            <a class="@(Operation == "delete" ? "selected" : "")" href="/execute-non-query/delete">DELETE Employee</a>
+            <a class="@(Operation == "bulk" ? "selected" : "")" href="/execute-non-query/bulk">BULK UPDATE</a>
+            <a class="@(Operation == "view" || string.IsNullOrEmpty(Operation) ? "selected" : "")" href="/execute-non-query/view">View Data</a>
+        </div>
+        @if (Operation == "view" || string.IsNullOrEmpty(Operation))
+        {
+            <section class="panel"><div class="section-title-row"><h2>CRUD Employee Data <span class="count-badge">@Data.CrudEmployees.Count rows</span></h2><div class="button-row"><button class="button secondary" @onclick="() => StateHasChanged()">Refresh Data</button><button class="button danger-outline" @onclick="ResetCrud">Reset to Initial State</button></div></div><EmployeeTable Rows="Data.CrudEmployees" /></section>
+        }
+        else
+        {
+            <div class="two-column">
+                <section class="panel">
+                    <h2>@OperationTitle</h2>
+                    @if (Operation == "insert")
+                    {
+                        <label>First name<input @bind="FirstName" required /></label><label>Last name<input @bind="LastName" required /></label><label>Email<input type="email" @bind="Email" required /></label><label>Department<select @bind="CrudDepartment">@foreach(var d in Departments){<option>@d</option>}</select></label><label>Salary<input type="number" min="0" step="100" @bind="CrudSalary" /></label><button class="button primary" @onclick="InsertCrud">Insert Employee</button>
+                    }
+                    else if (Operation == "update")
+                    {
+                        <label>Employee ID<input type="number" min="1" @bind="CrudId" /></label><label>First name (optional)<input @bind="FirstName" /></label><label>Last name (optional)<input @bind="LastName" /></label><label>Email (optional)<input type="email" @bind="Email" /></label><label>Department (optional)<input @bind="UpdateDepartment" /></label><label>Salary (optional; blank means unchanged)<input type="number" min="0" step="100" @bind="UpdateSalary" /></label><button class="button primary" @onclick="UpdateCrud">Update Employee</button>
+                    }
+                    else if (Operation == "delete")
+                    {
+                        <label>Employee ID<input type="number" min="1" @bind="CrudId" /></label><button class="button danger" @onclick="DeleteCrud">Delete Employee</button>
+                    }
+                    else if (Operation == "bulk")
+                    {
+                        <label>Department<select @bind="CrudDepartment">@foreach(var d in Departments){<option>@d</option>}</select></label><label>Salary increase (dollars)<input type="number" min="0" step="100" @bind="BulkIncreaseAmount" /></label><button class="button primary" @onclick="BulkCrud">Apply Increase</button>
+                    }
+                    else { <div class="empty-state">Unknown operation '@Operation'. Choose an operation above.</div> }
+                </section>
+                <section class="panel"><h2>SQL example</h2><pre><code>@CrudSql</code></pre><p class="muted">Displayed SQL is explanatory only. This operation edits the mock CRUD fixture and is not sent to a database.</p>
+                    @if (Mutation is not null) { <div class="result-message @(Mutation.Success ? "success" : "failure")"><strong>@Mutation.Message</strong><span>Affected rows: @Mutation.AffectedRows</span>@if(Mutation.Employee is not null){<span>@Mutation.Employee.FullName · ID @Mutation.Employee.EmployeeId</span>}</div> }
+                </section>
+            </div>
+        }
+    </section>;
+
+    private string OperationTitle => Operation switch { "insert" => "Insert Employee", "update" => "Update Employee", "delete" => "Delete Employee", "bulk" => "Bulk Salary Update", _ => "Employee Operation" };
+    private string CrudSql => Operation switch
+    {
+        "insert" => "INSERT INTO Employees (FirstName, LastName, Email, Department, Salary, HireDate) VALUES (@FirstName, @LastName, @Email, @Department, @Salary, @HireDate);",
+        "update" => "UPDATE Employees SET /* supplied fields only */ WHERE EmployeeId = @EmployeeId;",
+        "delete" => "DELETE FROM Employees WHERE EmployeeId = @EmployeeId;",
+        "bulk" => "UPDATE Employees SET Salary = Salary + @Increase WHERE Department = @Department;",
+        _ => "SELECT EmployeeId, FirstName, LastName, Email, Department, Salary, HireDate FROM Employees;"
+    };
+
+    private static string Money(decimal value) => value.ToString("C0", CultureInfo.GetCultureInfo("en-US"));
+
+    private void InsertCrud()
+    {
+        if (string.IsNullOrWhiteSpace(FirstName) || string.IsNullOrWhiteSpace(LastName) || string.IsNullOrWhiteSpace(Email) || !Email.Contains('@') || CrudSalary < 0)
+        {
+            Mutation = new(false, 0, "Enter valid first name, last name, email and a nonnegative salary.");
+            return;
+        }
+        Mutation = Data.InsertEmployee(FirstName, LastName, Email, CrudDepartment, CrudSalary);
+        FirstName = LastName = Email = "";
+    }
+    private void UpdateCrud()
+    {
+        if (UpdateSalary < 0)
+        {
+            Mutation = new(false, 0, "Salary must be zero or greater.");
+            return;
+        }
+        Mutation = Data.UpdateEmployee(CrudId, FirstName, LastName, Email, UpdateDepartment, UpdateSalary);
+    }
+    private void DeleteCrud() => Mutation = Data.DeleteEmployee(CrudId);
+    private void BulkCrud() => Mutation = Data.BulkIncrease(CrudDepartment, BulkIncreaseAmount);
+    private void ResetCrud() { Data.ResetCrudEmployees(); Mutation = new(true, 8, "Restored the eight-row mock CRUD fixture."); }
+
+    private RenderFragment RenderScenarioPage() => @<section>
+        <div class="breadcrumb"><a href="/">Dashboard</a> <span>/</span> @ScenarioTitle</div>
+        <div class="page-heading-row"><div><h1>@ScenarioTitle</h1><p>@ScenarioDescription</p></div><span class="mock-tag">@(CurrentPath == "/connection-test" ? "LOCAL SQLITE FIXTURES" : "MOCK DEMONSTRATION")</span></div>
+        @if (CurrentPath == "/connection-test")
+        {
+            <div class="notice"><strong>SQLite test servers</strong><span>These are two separate in-memory SQLite databases used as local server fixtures. SQLite is embedded, so they do not represent network database servers and require no external service or credentials.</span></div>
+            <div class="server-connection-grid">
+                @foreach (var server in ConnectionTests.GetConfiguredServers())
+                {
+                    <article class="panel server-connection-card">
+                        <div class="section-title-row"><h2>@server.Name</h2><span class="provider-icon">▣</span></div>
+                        <dl><dt>Provider</dt><dd>@server.Provider</dd><dt>Database</dt><dd>@server.DatabaseName</dd><dt>Fixture table</dt><dd>TestRecords</dd></dl>
+                        <p>Separate database instance with two seeded sample rows.</p>
+                    </article>
+                }
+            </div>
+            <section class="panel connection-test-actions">
+                <div class="section-title-row"><div><h2>Connection check</h2><p>Each check opens the configured connection and runs <code>SELECT COUNT(*) FROM TestRecords</code>.</p></div><button class="button primary" @onclick="RunConnectionTests" disabled="@ConnectionBusy">@(ConnectionBusy ? "Testing connections..." : "Test Both Connections")</button></div>
+                @if (ConnectionResults.Count > 0)
+                {
+                    <div class="library-results">
+                        @foreach (var result in ConnectionResults)
+                        {
+                            <article class="library-result">
+                                <div class="library-result-status @result.Status.ToLowerInvariant()">@result.Status</div>
+                                <div class="library-result-body">
+                                    <div class="section-title-row"><strong>@result.ServerName · @result.DatabaseName</strong><span class="muted">@result.ElapsedMilliseconds.ToString("F1") ms</span></div>
+                                    <p>@result.Detail</p>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+        }
+        else if (CurrentPath == "/stored-procedures")
+        {
+            <div class="two-column"><section class="panel"><h2>Procedure Catalog</h2><label>Procedure<select @bind="ScenarioSelection"><option>sp_GetEmployeesByDepartment</option><option>sp_GetTopSalaries</option><option>sp_GetCustomerOrders</option><option>sp_UpdateSalaryByDept</option></select></label><label>Parameter value<input @bind="ScenarioInput" placeholder="e.g. Engineering or 3" /></label><label>Result view<select @bind="JsonView"><option>Typed</option><option>JSON</option></select></label><button class="button primary" @onclick="RunScenario">Execute Mock Procedure</button></section><section class="panel"><h2>Result</h2>@ScenarioResultDisplay</section></div>
+        }
+        else if (CurrentPath == "/documentation")
+        {
+            <div class="docs-grid">
+                <article class="panel"><h2>Generic data access</h2><p>Use <code>IGenericDataAccess</code> for typed, single-row, JSON, affected-row, scalar and stored-procedure operations.</p><pre><code>QueryAsync&lt;T&gt;(sql, parameters, cancellationToken)
+QuerySingleAsync&lt;T&gt;(sql, parameters, cancellationToken)
+QueryJsonAsync(sql, parameters, cancellationToken)
+ExecuteAsync(sql, parameters, cancellationToken)</code></pre></article>
+                <article class="panel"><h2>HTTP and composite</h2><p><code>HttpDataAccess</code> maps HTTP JSON to typed results. <code>CompositeDataAccess</code> routes slash-prefixed or http-prefixed query strings to HTTP; other input is treated as SQL.</p></article>
+                <article class="panel"><h2>Transactions</h2><p><code>IUnitOfWork</code> scopes work to one transaction. The distributed manager coordinates separate local transactions and commits them sequentially; this is not a two-phase-commit guarantee.</p></article>
+                <article class="panel"><h2>Multi-server and factories</h2><p><code>IMultiServerDataAccess</code> uses configured aliases. <code>CrossServerDataAccess</code> accepts explicit connection options. Factories select SqlServer, PostgreSQL, MySQL or SQLite.</p></article>
+                <article class="panel"><h2>Honest execution labels</h2><p>Mock checks use in-memory fixtures. Direct Library tests use temporary SQLite databases and a stub HTTP handler. Neither proves a configured external database or API is available.</p></article>
+            </div>
+        }
+        else if (CurrentPath == "/database-providers")
+        {
+            <div class="provider-cards">
+                @foreach (var provider in ProviderDetails)
+                {
+                    <button class="provider-card @(ScenarioSelection == provider.Name ? "selected" : "")" @onclick="() => SelectScenario(provider.Name)">
+                        <span class="provider-icon">@provider.Icon</span><strong>@provider.Name</strong><small>@provider.Package</small><p>@provider.Description</p>
+                    </button>
+                }
+            </div>
+            <div class="two-column">
+                <section class="panel"><h2>Connection String Builder · @ScenarioSelection</h2>
+                    @if (ScenarioSelection == "SQLite") { <label>File path<input @bind="ProviderDatabase" placeholder="app.db" /></label> }
+                    else { <label>Server / Host<input @bind="ProviderHost" placeholder="localhost" /></label><label>Database<input @bind="ProviderDatabase" placeholder="MyDatabase" /></label><label>Username<input @bind="ProviderUser" autocomplete="off" /></label><label>Password<input type="password" @bind="ProviderPassword" autocomplete="new-password" /></label> }
+                    <div class="notice"><strong>Reference only</strong><span>No connection is opened; password values are omitted from the displayed example.</span></div>
+                    <code class="connection-preview">@ProviderConnectionString</code>
+                </section>
+                <section class="panel"><h2>Provider capabilities (reference)</h2><div class="table-scroll"><table><thead><tr><th>Feature</th><th>SQL Server</th><th>PostgreSQL</th><th>MySQL</th><th>SQLite</th></tr></thead><tbody>
+                    <tr><td>Standard queries / execute</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><td>Stored procedures</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td></tr><tr><td>FOR JSON AUTO</td><td>Yes</td><td>No</td><td>Partial</td><td>No</td></tr><tr><td>Multi-server / async</td><td colspan="4">Feature-dependent; explanatory reference, not tested compatibility.</td></tr>
+                </tbody></table></div></section>
+            </div>
+        }
+        else if (CurrentPath == "/configuration")
+        {
+            <div class="two-column"><section class="panel"><h2>Preview settings</h2>
+                <label>Default data source<select @bind="ScenarioSelection"><option>Auto</option><option>Database</option><option>Http</option></select></label>
+                <label>HTTP Base URL<input @bind="ScenarioInput" placeholder="http://localhost:5000" /></label>
+                <label>Provider<select @bind="ConfigProvider"><option>SqlServer</option><option>PostgreSQL</option><option>MySQL</option><option>SQLite</option></select></label>
+                <label>Connection name<input @bind="ConfigConnectionName" /></label>
+                <label>Connection string<input type="password" @bind="ConfigConnectionString" autocomplete="new-password" /></label>
+                <label>Command timeout (seconds)<input type="number" min="1" @bind="ConfigTimeout" /></label>
+                <div class="notice"><strong>Preview only</strong><span>Values are not applied, persisted, sent to the API, or used to connect to a database.</span></div>
+            </section><section class="panel"><h2>Valid appsettings JSON preview</h2><pre class="json-output"><code>@ConfigurationJson</code></pre></section></div>
+        }
+        else if (CurrentPath == "/unit-of-work" || CurrentPath == "/distributed-transaction")
+        {
+            <div class="scenario-cards">
+                @foreach (var scenario in ScenarioOptions)
+                {
+                    <button class="scenario-card @(ScenarioSelection == scenario ? "selected" : "")" @onclick="() => SelectScenario(scenario)"><strong>@scenario</strong><span>Mock transaction scenario</span></button>
+                }
+            </div>
+            <div class="panel"><div class="button-row"><button class="button primary" @onclick="RunScenario" disabled="@IsBusy">@(IsBusy ? "Running..." : "Run Scenario")</button><button class="button secondary" @onclick="() => ScenarioOutput = string.Empty">Clear</button></div>@if (!string.IsNullOrWhiteSpace(ScenarioOutput)){<div class="result-message success"><strong>@ScenarioOutput</strong><p>Simulated demonstration only; no transaction or database operation was performed.</p></div>}</div>
+        }
+        else
+        {
+            <div class="two-column">
+                <section class="panel"><h2>@ScenarioControlsTitle</h2>
+                    @if (CurrentPath == "/http-data-access")
+                    {
+                        <label>Quick endpoint<select @bind="ScenarioSelection" @bind:after="OnHttpEndpointChanged"><option>GET /mock/todos/1</option><option>GET /mock/todos</option><option>GET /mock/users/1</option><option>GET /mock/posts</option><option>GET /mock/json</option><option>POST /mock/posts</option><option>PUT /mock/posts/1</option><option>DELETE /mock/posts/1</option></select></label>
+                        <label>Request path<input @bind="ScenarioInput" placeholder="/mock/todos/1" /></label>
+                        @if (ScenarioSelection.StartsWith("POST") || ScenarioSelection.StartsWith("PUT")) { <label>JSON body<textarea @bind="JsonBody" rows="4"></textarea></label> }
+                    }
+                    else if (CurrentPath == "/composite") { <label>SQL query or URL<textarea @bind="ScenarioInput" rows="4" placeholder="SELECT 1 AS Id, 'Test' AS Value"></textarea></label><button class="chip" @onclick='() => ScenarioInput = "/mock/todos/1"'>Example HTTP path</button> }
+                    else if (CurrentPath == "/multi-server" || CurrentPath == "/cross-server") { <label>Scenario<select @bind="ScenarioSelection">@foreach(var option in ScenarioOptions){<option>@option</option>}</select></label><label>SQL / Query<textarea @bind="ScenarioInput" rows="3">SELECT DB_NAME() AS DatabaseName</textarea></label> }
+                    else if (CurrentPath == "/configuration") { <label>Default source<select @bind="ScenarioSelection"><option>Auto</option><option>Database</option><option>Http</option></select></label><label>HTTP Base URL<input @bind="ScenarioInput" placeholder="http://localhost:5000" /></label><p class="muted">Preview only. Does not apply settings, connect, or persist secrets.</p> }
+                    else { <p>@ScenarioDescription</p><label>Scenario<select @bind="ScenarioSelection">@foreach(var option in ScenarioOptions){<option>@option</option>}</select></label><label>Parameters / query<input @bind="ScenarioInput" /></label> }
+                    <button class="button primary" @onclick="RunScenario" disabled="@IsBusy">@(IsBusy ? "Running..." : ScenarioActionLabel)</button>
+                </section>
+                <section class="panel"><h2>Result</h2>@if (string.IsNullOrWhiteSpace(ScenarioOutput)){<div class="empty-state">Choose a scenario and run the mock demonstration.</div>}else{<pre class="json-output"><code>@ScenarioOutput</code></pre>}<p class="muted">Execution mode: mock. No API endpoint or database was invoked.</p></section>
+            </div>
+        }
+    </section>;
+
+    private string JsonBody { get; set; } = "{ \"title\": \"Explorer demo\", \"body\": \"Sample\", \"userId\": 1 }";
+    private string ProviderHost { get; set; } = "localhost";
+    private string ProviderDatabase { get; set; } = "MyDatabase";
+    private string ProviderUser { get; set; } = "";
+    private string ProviderPassword { get; set; } = "";
+    private string ConfigProvider { get; set; } = "SqlServer";
+    private string ConfigConnectionName { get; set; } = "Default";
+    private string ConfigConnectionString { get; set; } = "";
+    private int ConfigTimeout { get; set; } = 30;
+    private string ScenarioTitle => CurrentPath switch
+    {
+        "/execute-non-query" or "/execute-non-query/view" or "/execute-non-query/insert" or "/execute-non-query/update" or "/execute-non-query/delete" or "/execute-non-query/bulk" => "Execute Non-Query",
+        "/stored-procedures" => "Stored Procedures",
+        "/unit-of-work" => "Unit of Work",
+        "/distributed-transaction" => "Distributed Transactions",
+        "/multi-server" => "Multi-Server",
+        "/connection-test" => "Test Database Connections",
+        "/cross-server" => "Cross-Server",
+        "/http-data-access" => "HTTP Data Access",
+        "/composite" => "Composite Auto-Routing",
+        "/database-providers" => "Database Providers",
+        "/configuration" => "Configuration Builder",
+        "/documentation" => "Documentation & Architecture",
+        "/sql-queries" => "SQL Queries",
+        "/json-queries" => "JSON Queries",
+        "/advanced-features" => "Advanced Features",
+        "/data-sources" => "Data Sources",
+        _ => "DataAccessor Explorer"
+    };
+    private string ScenarioDescription => CurrentPath switch
+    {
+        "/stored-procedures" => "Explore typed and JSON stored-procedure demonstrations. The mock catalog does not prove procedures exist in a configured database.",
+        "/unit-of-work" => "Review simulated commit, rollback and multi-query transaction steps. No database transaction is opened.",
+        "/distributed-transaction" => "Simulate outcomes across named servers. This is not a genuine distributed transaction or proof of atomic commit.",
+        "/multi-server" => "Explore named-server query patterns using mock server identities; no connection status is implied.",
+        "/connection-test" => "Open two isolated SQLite databases through the Library connection factory and verify seeded records. These local fixtures are not network database servers.",
+        "/cross-server" => "Compare different-query-per-server and same-query-across-connections scenarios.",
+        "/http-data-access" => "Compose a demonstration HTTP request. Mock responses do not claim to be the API's actual contract.",
+        "/composite" => "Explore the library routing rule: slash-prefixed or http-prefixed input routes to HTTP; otherwise SQL.",
+        "/database-providers" => "Reference provider drivers and capabilities. This matrix is documentation, not a provider compatibility test.",
+        "/configuration" => "Preview configuration values. Editing the preview does not apply runtime configuration or connect to a database.",
+        "/documentation" => "Reference the library contracts, service classes and provider factories used by DataAccessor.",
+        "/sql-queries" => "Supplemental query demonstrations over the read-only mock fixture.",
+        "/json-queries" => "Supplemental JSON serialization and typed-data demonstrations.",
+        "/advanced-features" => "Explore advanced feature demonstrations. Results remain clearly labeled as mock.",
+        "/data-sources" => "Compare simulated data-source patterns and composite routing.",
+        _ => "Mock-first feature demonstration."
+    };
+    private string ScenarioControlsTitle => CurrentPath == "/database-providers" ? "Select Provider" : "Scenario Builder";
+    private string ScenarioActionLabel => CurrentPath == "/http-data-access" ? "Execute Mock Request" : CurrentPath == "/composite" ? "Route Query" : CurrentPath == "/configuration" ? "Update Preview" : "Run Demo";
+    private string[] ScenarioOptions => CurrentPath switch
+    {
+        "/unit-of-work" => ["Commit Transaction", "Rollback on Error", "Multi-Query Transaction"],
+        "/distributed-transaction" => ["Commit All Servers", "Rollback on Error"],
+        "/multi-server" => ["QueryJson", "QueryTyped", "QuerySingle", "Execute", "QueryMultiple", "QueryAcross"],
+        "/cross-server" => ["QueryMultipleServersAsync", "QueryAcrossServersAsync<T>"],
+        "/advanced-features" => ["Stored Procedures", "Execute Non-Query", "Transactions", "Cross-Server"],
+        "/database-providers" => ["SQL Server", "PostgreSQL", "MySQL", "SQLite"],
+        _ => ["Employees", "Customers", "Products", "Orders"]
+    };
+
+    private RenderFragment ScenarioResultDisplay => @<div>
+        @if (!string.IsNullOrWhiteSpace(ScenarioOutput)) { <pre class="json-output"><code>@ScenarioOutput</code></pre> }
+        else { <div class="empty-state">Run the selected mock procedure to view its result.</div> }
+    </div>;
+
+    private void SelectScenario(string scenario)
+    {
+        ScenarioSelection = scenario;
+        ScenarioOutput = "";
+    }
+
+    private async Task RunScenario()
+    {
+        IsBusy = true;
+        ScenarioOutput = "";
+        await Task.Delay(180);
+        try
+        {
+            object result = CurrentPath switch
+            {
+                "/stored-procedures" => RunMockProcedure(),
+                "/unit-of-work" => CreateMockUnitOfWorkResult(),
+                "/distributed-transaction" => CreateMockDistributedResult(),
+                "/http-data-access" => RunMockHttp(),
+                "/composite" => new { routedTo = IsHttpQuery(ScenarioInput) ? "HTTP" : "SQL", reason = IsHttpQuery(ScenarioInput) ? "Input begins with / or http." : "Input does not begin with / or http.", query = ScenarioInput, mode = "Mock prediction" },
+                "/multi-server" or "/cross-server" => new { scenario = ScenarioSelection, results = Data.Servers.Select(server => new { server.Name, server.Alias, result = "Mock database name" }), mode = "Mock simulation" },
+                "/configuration" => new { source = ScenarioSelection, httpBaseUrl = ScenarioInput, note = "Preview only; no runtime settings changed." },
+                "/database-providers" => new { provider = ScenarioSelection, note = "Reference information only; provider was not connected." },
+                "/sql-queries" => Data.QueryEmployees("Engineering", null, null),
+                "/json-queries" => Data.GetDataset(DatasetName),
+                "/advanced-features" or "/data-sources" => new { scenario = ScenarioSelection, mode = "Mock demonstration" },
+                _ => new { mode = "Mock demonstration", scenario = ScenarioSelection }
+            };
+            ScenarioOutput = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        catch (Exception exception) { ScenarioOutput = JsonSerializer.Serialize(new { error = exception.Message, executionMode = "Mock" }, new JsonSerializerOptions { WriteIndented = true }); }
+        IsBusy = false;
+    }
+
+    private object RunMockProcedure() => ScenarioSelection switch
+    {
+        "sp_GetEmployeesByDepartment" => Data.QueryEmployees(string.IsNullOrWhiteSpace(ScenarioInput) ? "Engineering" : ScenarioInput, null, null).ToArray(),
+        "sp_GetTopSalaries" => Data.Employees.OrderByDescending(employee => employee.Salary).Take(int.TryParse(ScenarioInput, out var top) ? Math.Clamp(top, 1, 5) : 3).ToArray(),
+        "sp_GetCustomerOrders" => Data.Orders.Where(order => order.CustomerId == (int.TryParse(ScenarioInput, out var id) ? id : 1)).ToArray(),
+        _ => new { procedure = ScenarioSelection, affectedRows = Data.Employees.Count(employee => employee.Department == "Engineering"), note = "Simulated summary; no persisted salary updates." }
+    };
+
+    private void OnHttpEndpointChanged()
+    {
+        ScenarioInput = ScenarioSelection.Contains(' ')
+            ? ScenarioSelection[(ScenarioSelection.IndexOf(' ') + 1)..]
+            : "";
+        ScenarioOutput = "";
+    }
+
+    private object RunMockHttp()
+    {
+        var method = ScenarioSelection.Split(' ')[0];
+        var path = string.IsNullOrWhiteSpace(ScenarioInput)
+            ? ScenarioSelection[(ScenarioSelection.IndexOf(' ') + 1)..]
+            : ScenarioInput;
+        object response = path switch
+        {
+            "/mock/todos/1" => Data.MockTodos[0],
+            "/mock/todos" => Data.MockTodos,
+            "/mock/users/1" => new { id = 1, name = "Leanne Graham", username = "Bret", email = "leanne@example.test" },
+            "/mock/posts" => new[] { new { id = 1, title = "Mock post", body = "Demonstration data", userId = 1 } },
+            "/mock/json" => new { message = "Raw JSON mock response", count = 1 },
+            _ when method == "POST" => new { id = 101, body = JsonBody },
+            _ when method == "PUT" => new { id = 1, body = JsonBody, updated = true },
+            _ when method == "DELETE" => new { id = 1, deleted = true },
+            _ => new { message = "Mock response; endpoint availability not verified." }
+        };
+        return new
+        {
+            method,
+            url = path,
+            statusCode = method == "POST" ? 201 : 200,
+            response
+        };
+    }
+
+    private object CreateMockUnitOfWorkResult()
+    {
+        var isRollback = ScenarioSelection == "Rollback on Error";
+        var isMultiQuery = ScenarioSelection == "Multi-Query Transaction";
+        var steps = isRollback
+            ? new[] { "BEGIN", "INSERT staged row", "INSERT invalid column → ERROR", "ROLLBACK (staged write discarded)" }
+            : isMultiQuery
+                ? new[] { "BEGIN", "QUERY single record", "QUERY JSON results", "COMMIT" }
+                : new[] { "BEGIN", "QUERY pending orders", "INSERT order", "UPDATE order status", "COMMIT" };
+        return new
+        {
+            transactionId = Guid.NewGuid().ToString("N")[..8],
+            status = isRollback ? "rolled-back" : "committed",
+            startedAt = DateTimeOffset.Now,
+            endedAt = DateTimeOffset.Now,
+            steps,
+            mode = "Mock simulation; no persistence verified"
+        };
+    }
+
+    private object CreateMockDistributedResult()
+    {
+        var rollback = ScenarioSelection == "Rollback on Error";
+        return new
+        {
+            success = !rollback,
+            scenario = ScenarioSelection,
+            servers = new[]
+            {
+                new { name = "OrdersDB", status = rollback ? "rolled-back" : "committed", command = rollback ? "valid command; rolled back" : "sample order write" },
+                new { name = "ProductsDB", status = rollback ? "error" : "committed", command = rollback ? "invalid SQL; caused rollback" : "sample product write" }
+            },
+            note = "Mock simulation; sequential local transactions do not prove two-phase atomicity."
+        };
+    }
+
+    private static bool IsHttpQuery(string? query) =>
+        query?.StartsWith('/') == true || query?.StartsWith("http", StringComparison.OrdinalIgnoreCase) == true;
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}
+
+<style>
+</style>

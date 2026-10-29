@@ -1,0 +1,8 @@
+<div class="stat-card @Accent"><div class="stat-icon">@Icon</div><div><span>@Label</span><strong>@Count</strong><small>Mock records</small></div></div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public int Count { get; set; }
+    [Parameter] public string Accent { get; set; } = "blue";
+    [Parameter] public string Icon { get; set; } = "";
+}

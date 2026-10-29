@@ -1,0 +1,11 @@
+<div class="panel preview-card">
+    <div class="section-title-row"><h3>@Title</h3><a href="@Route">View all →</a></div>
+    <div class="table-scroll"><table><thead><tr>@foreach (var header in Headers.Split(',')) { <th>@header</th> }</tr></thead><tbody>@foreach (var row in Rows) { <tr>@foreach (var cell in row) { <td>@cell</td> }</tr> }</tbody></table></div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Route { get; set; } = "/";
+    [Parameter] public string Headers { get; set; } = "";
+    [Parameter] public IEnumerable<string[]> Rows { get; set; } = [];
+}

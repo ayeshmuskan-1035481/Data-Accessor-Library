@@ -1,0 +1,39 @@
+@inject NavigationManager Navigation
+
+<nav class="nav-groups">
+    <div class="nav-group">
+        <div class="nav-label">MAIN</div>
+        <NavLink href="/" Match="NavLinkMatch.All"><span>▦</span>Dashboard</NavLink>
+        <NavLink href="/database-viewer"><span>▤</span>Database Viewer <b>5</b></NavLink>
+        <NavLink href="/connection-test"><span>⇄</span>Test Connections</NavLink>
+    </div>
+    <div class="nav-group">
+        <div class="nav-label">SQL OPERATIONS</div>
+        <NavLink href="/generic/query-multiple"><span>☷</span>Query Multiple</NavLink>
+        <NavLink href="/generic/query-single"><span>◉</span>Query Single</NavLink>
+        <NavLink href="/generic/query-json"><span>{ }</span>Query JSON</NavLink>
+        <NavLink href="/execute-non-query"><span>✎</span>Execute Non-Query</NavLink>
+        <NavLink href="/stored-procedures"><span>⌘</span>Stored Procedures</NavLink>
+    </div>
+    <div class="nav-group">
+        <div class="nav-label">TRANSACTIONS</div>
+        <NavLink href="/unit-of-work"><span>⇄</span>Unit of Work</NavLink>
+        <NavLink href="/distributed-transaction"><span>⤳</span>Distributed Txn</NavLink>
+    </div>
+    <div class="nav-group">
+        <div class="nav-label">MULTI-SERVER</div>
+        <NavLink href="/multi-server"><span>▥</span>Multi-Server</NavLink>
+        <NavLink href="/cross-server"><span>⇆</span>Cross-Server</NavLink>
+    </div>
+    <div class="nav-group">
+        <div class="nav-label">HTTP &amp; COMPOSITE</div>
+        <NavLink href="/http-data-access"><span>↗</span>HTTP Data Access</NavLink>
+        <NavLink href="/composite"><span>◈</span>Composite Access</NavLink>
+    </div>
+    <div class="nav-group">
+        <div class="nav-label">REFERENCE</div>
+        <NavLink href="/database-providers"><span>▧</span>DB Providers</NavLink>
+        <NavLink href="/configuration"><span>⚙</span>Configuration</NavLink>
+        <NavLink href="/documentation"><span>▤</span>Documentation</NavLink>
+    </div>
+</nav>

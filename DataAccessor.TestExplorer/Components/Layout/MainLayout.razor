@@ -1,0 +1,20 @@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-icon">▤</div>
+            <div><strong>DataAccessor</strong><small>LIBRARY EXPLORER</small></div>
+        </div>
+        <div class="sidebar-mode"><span class="pulse-dot"></span> Mock + SQLite Fixtures</div>
+        <NavMenu />
+        <div class="sidebar-foot">Local fixtures · no external database writes</div>
+    </aside>
+    <section class="main-shell">
+        <header class="topbar">
+            <div class="topbar-title"><span>◫</span> Data Access Explorer <span class="slash">/</span> <strong>DataAccessor.Library</strong></div>
+            <div class="topbar-right"><span>Database</span><a href="/documentation">Docs</a><span class="env-pill"><i></i> Local</span></div>
+        </header>
+        @Body
+    </section>
+</div>
